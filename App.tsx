@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import GameCanvas from './components/GameCanvas';
 import { GameState } from './types';
@@ -178,7 +177,7 @@ const App: React.FC = () => {
           </div>
           
           <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-blue-400 to-green-400 mb-2">
-            COLOR MATCH
+            RENK ÇARKI
           </h1>
           <p className="text-slate-300 mb-10 max-w-xs">
             Çemberdeki <span className="font-bold text-white bg-slate-700 px-2 py-0.5 rounded mx-1 text-sm border border-slate-600">Renge Tıkla</span> ve topu yakala!
