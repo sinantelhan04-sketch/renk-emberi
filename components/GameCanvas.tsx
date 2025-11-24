@@ -183,28 +183,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       }
     };
 
-    const handleTouchOrClick = (e: Event) => {
+    const handlePointerDown = (e: PointerEvent) => {
         const target = e.target as HTMLElement;
+        // Butonlara basıldığında oyun etkileşimini engelle
         if (target.tagName === 'BUTTON' || target.closest('button')) return;
 
         if (!gameState.isPlaying || gameState.isGameOver) return;
 
-        let clientX, clientY;
-        if (e.type === 'touchstart') {
-            const touchEvent = e as TouchEvent;
-            clientX = touchEvent.touches[0].clientX;
-            clientY = touchEvent.touches[0].clientY;
-        } else {
-            const mouseEvent = e as MouseEvent;
-            clientX = mouseEvent.clientX;
-            clientY = mouseEvent.clientY;
-        }
-
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return;
         
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         const centerX = dimensions.width / 2;
         const centerY = dimensions.height / 2 + 80;
 
@@ -212,36 +202,58 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         const dy = y - centerY;
         const dist = Math.sqrt(dx*dx + dy*dy);
 
+        // Çarkın üzerine tıklandıysa akıllı döndürme yap
         if (dist < GAME_CONFIG.WHEEL_RADIUS * 1.6) {
              let angle = Math.atan2(dy, dx) * (180 / Math.PI);
              if (angle < 0) angle += 360;
              
              let clickedQuadrant = 0; 
+             // 0: Üst, 1: Sağ, 2: Alt, 3: Sol
              if (angle >= 45 && angle < 135) clickedQuadrant = 1; 
              else if (angle >= 135 && angle < 225) clickedQuadrant = 2; 
              else if (angle >= 225 && angle < 315) clickedQuadrant = 3; 
              
-             const stepsToTop = (3 - clickedQuadrant + 4) % 4;
+             // En tepeye (0 noktasına) gelmesi için gereken adım sayısı
+             // Formül: (Hedef - Mevcut + 4) % 4 -> Biz mevcut olanın tepeye gelmesini istiyoruz.
+             // Şu anki mantıkta 0 indexi tepedeki renk.
+             // Tıklanan quadrant'ı tepeye getirmek için ne kadar dönmeli?
              
-             if (stepsToTop === 0) return; 
+             // Örnek: Tıklanan 1 (Sağ). Tepeye gelmesi için Sola 1 tur (-1 veya +3) dönmeli.
+             const stepsToTop = (3 - clickedQuadrant + 4) % 4; // Bu formülü tekrar gözden geçirelim
+             // clickedQuadrant 1 (Sağ) -> (3-1+4)%4 = 2 ? Hayır, sağdakini tepeye almak için sola çevirmek lazım.
+             // Çark saat yönünde dönüyor (Index artıyor).
+             // Index artınca renkler saat yönünde kayıyor.
+             
+             // Basit mantık:
+             // 0 (Üst) -> Dönme yok
+             // 1 (Sağ) -> 1 birim Sola dönmeli (Index -1 veya +3)
+             // 2 (Alt) -> 2 birim dönmeli
+             // 3 (Sol) -> 1 birim Sağa dönmeli (Index +1)
+             
+             // Tıklanan yerin indexi Quadrant.
+             // Biz bu Quadrant'ı 0 yapmak istiyoruz.
+             
+             let rotationAmount = 0;
+             if (clickedQuadrant === 1) rotationAmount = 3; // +3 = -1 (Sola 1)
+             else if (clickedQuadrant === 2) rotationAmount = 2;
+             else if (clickedQuadrant === 3) rotationAmount = 1; // +1 (Sağa 1)
 
-             let rotationAmount = stepsToTop;
-             if (stepsToTop === 3) rotationAmount = -1; 
-
-             rotateWheel(rotationAmount);
+             if (rotationAmount !== 0) {
+                 rotateWheel(rotationAmount);
+             }
         } else {
+            // Çark dışına tıklandıysa standart dönüş
             rotateWheel(1);
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('mousedown', handleTouchOrClick);
-    window.addEventListener('touchstart', handleTouchOrClick);
+    // Mouse ve Touch eventlerini pointerdown ile birleştiriyoruz (Ghost click engellemek için)
+    window.addEventListener('pointerdown', handlePointerDown);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('mousedown', handleTouchOrClick);
-      window.removeEventListener('touchstart', handleTouchOrClick);
+      window.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [rotateWheel, gameState.isPlaying, gameState.isGameOver, dimensions]);
 
