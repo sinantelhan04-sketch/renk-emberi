@@ -23,6 +23,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   const visualRotationRef = useRef<number>(0); // Görsel anlık açı (Radyan)
   const targetRotationRef = useRef<number>(0); // Hedef açı (Radyan)
   const scaleRef = useRef<number>(1); // Vuruş efekti için ölçek (Pulse)
+  const rotationVelocityRef = useRef<number>(0); // Dönüş hızı (Yay fiziği için)
   
   // Oyun döngüsü içinde güncel skoru takip etmek için Ref kullanıyoruz
   const scoreRef = useRef<number>(0);
@@ -89,7 +90,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.1);
         
-        gainNode.gain.setValueAtTime(0.3, now);
+        // Volume increased from 0.3 to 0.8
+        gainNode.gain.setValueAtTime(0.8, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         
         osc.start(now);
@@ -102,7 +104,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
         
-        gainNode.gain.setValueAtTime(0.2, now);
+        // Volume increased from 0.2 to 0.5 (Sawtooth is naturally louder)
+        gainNode.gain.setValueAtTime(0.5, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
         
         osc.start(now);
@@ -115,7 +118,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.linearRampToValueAtTime(freq * 2, now + 0.05); 
         
-        gainNode.gain.setValueAtTime(0.15, now);
+        // Volume increased from 0.15 to 0.4
+        gainNode.gain.setValueAtTime(0.4, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         
         osc.start(now);
@@ -128,7 +132,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       osc.frequency.setValueAtTime(150, now);
       osc.frequency.exponentialRampToValueAtTime(10, now + 1.0);
 
-      gainNode.gain.setValueAtTime(0.3, now);
+      // Volume increased from 0.3 to 0.7
+      gainNode.gain.setValueAtTime(0.7, now);
       gainNode.gain.linearRampToValueAtTime(0.001, now + 1.0);
 
       osc.start(now);
@@ -259,6 +264,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       visualRotationRef.current = 0;
       targetRotationRef.current = 0;
       lastSpawnTimeRef.current = performance.now();
+      rotationVelocityRef.current = 0;
       
       // Hızı mevcut skora göre ayarla (Kaldığın yerden devam özelliği için)
       currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + (gameState.score * GAME_CONFIG.SPEED_INCREMENT);
@@ -354,6 +360,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2 + 80;
 
+    // Yay fiziği sabitleri (Constants'dan da çekilebilirdi ama şimdilik burada)
+    const TENSION = 0.08; 
+    const FRICTION = 0.85; 
+
     const render = (time: number) => {
       ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
@@ -375,7 +385,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
              return; 
       }
 
-      visualRotationRef.current += (targetRotationRef.current - visualRotationRef.current) * GAME_CONFIG.ROTATION_SPEED;
+      // --- SPRING PHYSICS FOR ROTATION ---
+      const diff = targetRotationRef.current - visualRotationRef.current;
+      rotationVelocityRef.current += diff * TENSION;
+      rotationVelocityRef.current *= FRICTION;
+      visualRotationRef.current += rotationVelocityRef.current;
+      
+      // Squash & Stretch effect based on velocity
+      const velocityStretch = Math.min(Math.abs(rotationVelocityRef.current) * 0.5, 0.15);
+      const dynamicScale = scaleRef.current - velocityStretch;
+
       scaleRef.current += (1 - scaleRef.current) * 0.15;
 
       if (gameState.isPlaying && !gameState.isGameOver) {
@@ -497,7 +516,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       }
 
       if (!gameState.isGameOver) {
-        drawWheel(ctx, centerX, centerY, visualRotationRef.current, scaleRef.current);
+        // Use dynamicScale calculated from spring physics velocity
+        drawWheel(ctx, centerX, centerY, visualRotationRef.current, dynamicScale);
         drawTargetIndicator(ctx, centerX, centerY - GAME_CONFIG.WHEEL_RADIUS - 15);
       }
 
