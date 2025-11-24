@@ -1,8 +1,8 @@
 import { ColorType } from './types';
 
 export const GAME_CONFIG = {
-  WHEEL_RADIUS: 80,
-  BALL_RADIUS: 12,
+  WHEEL_RADIUS: 115,
+  BALL_RADIUS: 14,
   INITIAL_SPEED: 3.0,
   SPEED_INCREMENT: 0.15,
   SPAWN_RATE_MS: 1800, 
