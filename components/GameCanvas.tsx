@@ -360,9 +360,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2 + 80;
 
-    // Yay fiziği sabitleri (Constants'dan da çekilebilirdi ama şimdilik burada)
-    const TENSION = 0.08; 
-    const FRICTION = 0.85; 
+    // Yay fiziği sabitleri (Daha tok ve net bir hissiyat için güncellendi)
+    const TENSION = 0.15; // Increased snap (was 0.08)
+    const FRICTION = 0.65; // High damping to stop quickly (was 0.85)
 
     const render = (time: number) => {
       ctx.clearRect(0, 0, dimensions.width, dimensions.height);
@@ -391,8 +391,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       rotationVelocityRef.current *= FRICTION;
       visualRotationRef.current += rotationVelocityRef.current;
       
-      // Squash & Stretch effect based on velocity
-      const velocityStretch = Math.min(Math.abs(rotationVelocityRef.current) * 0.5, 0.15);
+      // Squash & Stretch effect based on velocity (Significantly reduced for less wobble)
+      const velocityStretch = Math.min(Math.abs(rotationVelocityRef.current) * 0.1, 0.05);
       const dynamicScale = scaleRef.current - velocityStretch;
 
       scaleRef.current += (1 - scaleRef.current) * 0.15;
