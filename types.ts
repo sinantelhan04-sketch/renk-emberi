@@ -26,7 +26,9 @@ export interface Particle {
   color: string;
   alpha: number;
   size: number;
-  shape: 'circle' | 'square' | 'line' | 'shockwave'; // Added shockwave
+  shape: 'circle' | 'square' | 'line' | 'shockwave' | 'confetti'; // Added confetti
+  rotation?: number; // For confetti tumbling
+  rotationSpeed?: number;
 }
 
 export interface FloatingText {

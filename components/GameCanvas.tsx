@@ -27,6 +27,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   
   // Oyun döngüsü içinde güncel skoru takip etmek için Ref kullanıyoruz
   const scoreRef = useRef<number>(0);
+  const highScoreRef = useRef<number>(gameState.highScore); // Başlangıçtaki rekoru tut
+  const hasTriggeredConfettiRef = useRef<boolean>(false); // Rekor kutlaması yapıldı mı?
   
   const lastSpawnTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
@@ -50,6 +52,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   useEffect(() => {
     scoreRef.current = gameState.score;
   }, [gameState.score]);
+  
+  // HighScore prop değişirse ref'i güncelle (ancak oyun sırasında confetti mantığı için init değer önemli)
+  useEffect(() => {
+     // Sadece oyun başında veya restartta high score referansını güncellemek mantıklı, 
+     // ancak App.tsx high score'u oyun bitince güncelliyor. 
+     // Biz oyun İÇİNDE rekor kırılmasını kontrol edeceğimiz için 
+     // component mount olduğunda veya oyun başladığında bu değeri kilitliyoruz (aşağıdaki reset bloğunda).
+  }, [gameState.highScore]);
 
   useEffect(() => {
     // AudioContext'i başlat (Tarayıcı desteği ile)
@@ -65,7 +75,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     };
   }, []);
 
-  const playSound = useCallback((type: 'score' | 'gameover' | 'freeze') => {
+  const playSound = useCallback((type: 'score' | 'gameover' | 'freeze' | 'levelup') => {
     if (isMuted || !audioCtxRef.current) return;
 
     const ctx = audioCtxRef.current;
@@ -86,7 +96,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const currentLevel = Math.floor(currentScore / 10) + 1;
 
     if (type === 'freeze') {
-        // Buz Efekti Sesi (Kristal çınlama)
         osc.type = 'sine';
         osc.frequency.setValueAtTime(1200, now);
         osc.frequency.linearRampToValueAtTime(800, now + 0.5);
@@ -94,58 +103,51 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
         osc.start(now);
         osc.stop(now + 0.5);
+    } else if (type === 'levelup') {
+        // Konfeti / Rekor sesi
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+        osc.frequency.linearRampToValueAtTime(1200, now + 0.2);
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.6);
+        osc.start(now);
+        osc.stop(now + 0.6);
     } else if (type === 'score') {
-      // --- EVRİMLEŞEN SES EFEKTLERİ ---
-      
       if (currentLevel < 4) {
-        // LEVEL 1-3: Soft & Bubbly (Triangle Wave)
         osc.type = 'triangle';
         const freq = 600 + (Math.random() * 100); 
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.1);
-        
         gainNode.gain.setValueAtTime(0.8, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-        
         osc.start(now);
         osc.stop(now + 0.1);
-
       } else if (currentLevel < 8) {
-        // LEVEL 4-7: Arcade Laser (Sawtooth Wave)
         osc.type = 'sawtooth';
         const freq = 800 - ((currentScore % 10) * 20); 
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
-        
         gainNode.gain.setValueAtTime(0.5, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-        
         osc.start(now);
         osc.stop(now + 0.15);
-
       } else {
-        // LEVEL 8+: 8-Bit Power (Square Wave)
         osc.type = 'square';
         const freq = 200 + (Math.random() * 50);
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.linearRampToValueAtTime(freq * 2, now + 0.05); 
-        
         gainNode.gain.setValueAtTime(0.4, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-        
         osc.start(now);
         osc.stop(now + 0.1);
       }
-
     } else if (type === 'gameover') {
       osc.type = 'sawtooth';
-      
       osc.frequency.setValueAtTime(150, now);
       osc.frequency.exponentialRampToValueAtTime(10, now + 1.0);
-
       gainNode.gain.setValueAtTime(0.7, now);
       gainNode.gain.linearRampToValueAtTime(0.001, now + 1.0);
-
       osc.start(now);
       osc.stop(now + 1.0);
     }
@@ -261,14 +263,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       floatingTextsRef.current = [];
       
       // SADECE level 1'den başlanıyorsa (Tam Reset) çarkı sıfırla.
-      // Kaldığı yerden devam ediyorsa (Continue) çarkın yönü korunsun.
       if (gameState.level === 1) {
           wheelRotationIndexRef.current = 0;
           visualRotationRef.current = 0;
           targetRotationRef.current = 0;
+          highScoreRef.current = gameState.highScore; // Rekor takibini resetle
+          hasTriggeredConfettiRef.current = false; // Konfeti durumunu resetle
       } else {
-          // Continue durumunda hedef açıyı görsel açıya eşitle ki 
-          // gereksiz dönme animasyonu olmasın (spin durur)
+          // Continue durumunda hedef açıyı görsel açıya eşitle
           targetRotationRef.current = visualRotationRef.current;
       }
 
@@ -277,9 +279,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       speedMultiplierRef.current = 1.0;
       if (slowMotionTimeoutRef.current) clearTimeout(slowMotionTimeoutRef.current);
       
-      // Hız sıfırlama: Levelden bağımsız olarak başlangıç hızına dön
-      // Böylece yüksek levelda devam eden oyuncu "imkansız" bir hızla karşılaşmaz.
-      // Hız zamanla artacak (render loop içinde).
       currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED;
       totalTimePlayedRef.current = 0;
       
@@ -290,7 +289,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
     prevIsGameOver.current = gameState.isGameOver;
     prevIsPlaying.current = gameState.isPlaying;
-  }, [gameState.isPlaying, gameState.isGameOver, gameState.score, gameState.level]);
+  }, [gameState.isPlaying, gameState.isGameOver, gameState.score, gameState.level, gameState.highScore]);
 
   // Yardımcı: Parçacık Patlaması
   const createExplosion = (x: number, y: number, color: string) => {
@@ -316,6 +315,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         shape: particleShape
       });
     }
+  };
+
+  // Yardımcı: Konfeti Patlaması
+  const createConfettiExplosion = () => {
+      const colors = ['#f472b6', '#38bdf8', '#facc15', '#4ade80', '#ffffff'];
+      for (let i = 0; i < 100; i++) {
+          const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI; // Yukarı doğru yelpaze
+          const speed = Math.random() * 10 + 5;
+          particlesRef.current.push({
+              id: Math.random(),
+              x: dimensions.width / 2,
+              y: dimensions.height / 2 + 50,
+              vx: Math.cos(angle) * speed * (Math.random() + 0.5),
+              vy: Math.sin(angle) * speed - 5,
+              color: colors[Math.floor(Math.random() * colors.length)],
+              alpha: 1,
+              size: Math.random() * 6 + 4,
+              shape: 'confetti',
+              rotation: Math.random() * 360,
+              rotationSpeed: (Math.random() - 0.5) * 10
+          });
+      }
   };
 
   // Yardımcı: Uçan Yazı Efekti
@@ -443,12 +464,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       if (gameState.isPlaying && !gameState.isGameOver) {
         // --- ZAMAN BAZLI HIZ ARTIŞI ---
         totalTimePlayedRef.current += deltaTime;
-        // Her saniye hız 0.05 artar (Daha dengeli artış)
         const speedIncrease = (totalTimePlayedRef.current / 1000) * 0.05;
         currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + speedIncrease;
 
         // --- SPAWN LOGIC: TOP BİTİNCE YENİSİ GELSİN (Sequential) ---
-        // Sadece ekranda top yoksa yenisini oluştur.
         if (ballsRef.current.length === 0) {
             const randomColor = WHEEL_COLORS[Math.floor(Math.random() * WHEEL_COLORS.length)];
             const shapes: ShapeType[] = ['circle', 'square', 'hexagon', 'diamond', 'star'];
@@ -478,14 +497,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       for (let i = ballsRef.current.length - 1; i >= 0; i--) {
         const ball = ballsRef.current[i];
         
-        // Hız çarpanını uygula (Slow Motion için)
         ball.y += ball.speed * speedMultiplierRef.current;
 
         if (ball.y >= hitY) {
           const topColorIndex = (0 - wheelRotationIndexRef.current + 4) % 4;
           const activeColor = SEGMENT_ORDER[topColorIndex];
 
-          // Snowflake herhangi bir renkle eşleşir (Wildcard)
           const isMatch = ball.color === activeColor || ball.shape === 'snowflake';
 
           if (isMatch) {
@@ -496,7 +513,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
             if (ball.shape === 'snowflake') {
                 triggerSlowMotion();
-                createFloatingText(centerX, hitY, "FREEZE!", '#22d3ee', 36); // Cyan-400
+                createFloatingText(centerX, hitY, "FREEZE!", '#22d3ee', 36);
             } else {
                 createFloatingText(centerX, hitY, `+${points}`, ball.color, points > 2 ? 32 : 24);
             }
@@ -505,6 +522,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
             setGameState(prev => {
               const newScore = prev.score + points;
               const newLevel = Math.floor(newScore / 10) + 1;
+              
+              // REKOR KONTROLÜ
+              if (newScore > highScoreRef.current && !hasTriggeredConfettiRef.current && highScoreRef.current > 0) {
+                  hasTriggeredConfettiRef.current = true;
+                  createConfettiExplosion();
+                  createFloatingText(centerX, centerY - 50, "YENİ REKOR!", '#fbbf24', 40);
+                  playSound('levelup');
+              }
+
               return { ...prev, score: newScore, level: newLevel };
             });
 
@@ -556,8 +582,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         if (p.shape === 'shockwave') {
              p.size += 15; 
              p.alpha -= 0.03;
+        } else if (p.shape === 'confetti') {
+            // Konfeti Fiziği
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += PARTICLE_CONFIG.GRAVITY * 0.5; // Daha hafif yerçekimi
+            p.vx *= 0.96; // Sürtünme
+            p.rotation = (p.rotation || 0) + (p.rotationSpeed || 5);
+            p.alpha -= 0.005; // Yavaşça yok ol
         } else {
-             // Slow motion parçacıkları da etkiler (isteğe bağlı, şimdilik etkilemesin)
              p.x += p.vx;
              p.y += p.vy;
              p.vy += PARTICLE_CONFIG.GRAVITY; 
@@ -575,6 +608,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
              ctx.strokeStyle = `rgba(255, 255, 255, ${p.alpha})`;
              ctx.lineWidth = 50 * p.alpha; 
              ctx.stroke();
+          } else if (p.shape === 'confetti') {
+             ctx.translate(p.x, p.y);
+             ctx.rotate((p.rotation || 0) * Math.PI / 180);
+             ctx.fillStyle = p.color;
+             ctx.globalAlpha = p.alpha;
+             // Sallanma efekti
+             const sway = Math.cos(time * 0.01 + p.id * 10) * 0.5 + 1;
+             ctx.fillRect(-p.size/2 * sway, -p.size/2, p.size * sway, p.size);
           } else {
               ctx.globalAlpha = p.alpha;
               ctx.fillStyle = p.color;
@@ -648,7 +689,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
   const drawWheel = (ctx: CanvasRenderingContext2D, x: number, y: number, rotationRad: number, scale: number) => {
     const currentLevel = Math.floor(scoreRef.current / 10) + 1;
-    const isSquareShape = currentLevel > 10;
+    
+    // Level Aralığına Göre Şekil Belirleme
+    let shapeType: 'circle' | 'square' | 'hexagon' | 'octagon' | 'star' = 'circle';
+    if (currentLevel > 40) shapeType = 'star';
+    else if (currentLevel > 30) shapeType = 'octagon';
+    else if (currentLevel > 20) shapeType = 'hexagon';
+    else if (currentLevel > 10) shapeType = 'square';
+    else shapeType = 'circle';
 
     ctx.save();
     ctx.translate(x, y);
@@ -657,184 +705,127 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
     const outerRadius = GAME_CONFIG.WHEEL_RADIUS;
     const innerRadius = GAME_CONFIG.WHEEL_RADIUS * 0.55; 
-    const gap = 0.08; 
 
+    // --- 1. ADIM: ŞEKİL KLİPLEME ---
+    // Önce dış şekli çiz ve clip() uygula. Böylece renkleri basitçe dikdörtgen olarak çizebiliriz.
+    ctx.beginPath();
+    drawShapePath(ctx, shapeType, outerRadius);
+    ctx.clip(); // Artık sadece bu şeklin içine çizim yapılacak
+
+    // --- 2. ADIM: RENK DİLİMLERİ ---
+    // 4 Rengi basitçe 4 büyük kare/dilim olarak çiziyoruz. Clip sayesinde şekle oturacak.
     SEGMENT_ORDER.forEach((color, index) => {
-      
-      if (isSquareShape) {
-        // --- KARE (LEVEL 11+) ---
-        // 4 Parçayı Trapezoid olarak çiz
-        const R = outerRadius;
-        const r = innerRadius;
-        
         ctx.beginPath();
-        if (index === 0) { // Top (Red)
-          ctx.moveTo(-R, -R); ctx.lineTo(R, -R);
-          ctx.lineTo(r, -r); ctx.lineTo(-r, -r);
-        } else if (index === 1) { // Right (Blue)
-          ctx.moveTo(R, -R); ctx.lineTo(R, R);
-          ctx.lineTo(r, r); ctx.lineTo(r, -r);
-        } else if (index === 2) { // Bottom (Green)
-          ctx.moveTo(R, R); ctx.lineTo(-R, R);
-          ctx.lineTo(-r, r); ctx.lineTo(r, r);
-        } else { // Left (Yellow)
-          ctx.moveTo(-R, R); ctx.lineTo(-R, -R);
-          ctx.lineTo(-r, -r); ctx.lineTo(-r, r);
-        }
-        ctx.closePath();
+        // Basit quadrant çizimi (0, 90, 180, 270 derece yönünde)
+        // Her dilim çeyrek alanı kapsasın
+        const startAngle = (index * 90 - 135) * (Math.PI / 180);
+        const endAngle = (index * 90 - 45) * (Math.PI / 180);
         
+        ctx.moveTo(0,0);
+        ctx.arc(0, 0, outerRadius * 2, startAngle, endAngle); // Radius * 2 garanti olsun diye
         ctx.fillStyle = color;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = color;
         ctx.fill();
-        ctx.shadowBlur = 0;
+    });
 
-        // Kare Kenar Detayları
-        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-      } else {
-        // --- DAİRE (LEVEL 1-10) ---
-        const startAngle = ((index * 90) - 135) * (Math.PI / 180) + gap;
-        const endAngle = ((index * 90) - 45) * (Math.PI / 180) - gap;
-
-        ctx.beginPath();
-        ctx.arc(0, 0, outerRadius, startAngle, endAngle, false);
-        ctx.arc(0, 0, innerRadius, endAngle, startAngle, true);
-        ctx.closePath();
-
-        ctx.fillStyle = color;
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = color;
-        ctx.fill();
-        ctx.shadowBlur = 0; 
-        
-        // Daire için detaylar (Mevcut kod)
-        if (currentLevel >= 4 && currentLevel < 8) {
-             // ... existing level 4-8 details ...
-             ctx.save();
-             ctx.clip(); 
-             const midRadius = (outerRadius + innerRadius) / 2;
+    // Parlama Efektleri (Shape'e özel)
+    if (shapeType !== 'circle') {
+       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+       ctx.lineWidth = 2;
+       drawShapePath(ctx, shapeType, outerRadius); // Kenar çizgisi
+       ctx.stroke();
+    } else {
+        // Daire için klasik efektler
+        if (currentLevel >= 4) {
              ctx.beginPath();
-             ctx.arc(0, 0, midRadius, startAngle, endAngle);
-             ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-             ctx.lineWidth = 4;
-             ctx.stroke();
-             ctx.beginPath();
-             ctx.arc(0, 0, outerRadius - 2, startAngle, endAngle);
+             ctx.arc(0, 0, outerRadius - 2, 0, Math.PI * 2);
              ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
              ctx.lineWidth = 2;
              ctx.stroke();
-             ctx.restore();
-        } else if (currentLevel >= 8) {
-             // ... existing level 8+ details ...
-             ctx.save();
-             ctx.clip();
-             const midAngle = (startAngle + endAngle) / 2;
-             const polyX = Math.cos(midAngle) * ((outerRadius + innerRadius) / 2);
-             const polyY = Math.sin(midAngle) * ((outerRadius + innerRadius) / 2);
-             ctx.beginPath();
-             ctx.arc(0, 0, outerRadius, startAngle, endAngle);
-             ctx.lineTo(0, 0); 
-             const grad = ctx.createRadialGradient(polyX, polyY, 5, polyX, polyY, 40);
-             grad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-             grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-             ctx.fillStyle = grad;
-             ctx.fill();
-             ctx.restore();
-        } else {
-             const midAngle = (startAngle + endAngle) / 2;
-             const glossX = Math.cos(midAngle) * (outerRadius * 0.8);
-             const glossY = Math.sin(midAngle) * (outerRadius * 0.8);
-             const grad = ctx.createRadialGradient(glossX, glossY, 5, glossX, glossY, 40);
-             grad.addColorStop(0, 'rgba(255,255,255,0.3)');
-             grad.addColorStop(1, 'rgba(255,255,255,0)');
-             ctx.fillStyle = grad;
-             ctx.fill();
-        }
-      }
-    });
-
-    // --- İÇ BOŞLUK (CORE) ---
-    if (isSquareShape) {
-        // Kare İç Boşluk
-        const r = innerRadius;
-        ctx.beginPath();
-        ctx.rect(-r + 5, -r + 5, (r * 2) - 10, (r * 2) - 10);
-        ctx.fillStyle = '#020617';
-        ctx.fill();
-
-        // Kare Core Glow
-        ctx.shadowBlur = 30;
-        ctx.shadowColor = '#f472b6'; // Pembe glow
-        ctx.strokeStyle = '#f472b6';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(-r + 10, -r + 10, (r * 2) - 20, (r * 2) - 20);
-        ctx.shadowBlur = 0;
-        
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-5, -5, 10, 10);
-
-    } else {
-        // Daire İç Boşluk (Mevcut kod)
-        ctx.beginPath();
-        ctx.arc(0, 0, innerRadius - 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#020617'; 
-        ctx.fill();
-
-        if (currentLevel >= 8) {
-            ctx.beginPath();
-            ctx.arc(0, 0, 15, 0, Math.PI * 2);
-            const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
-            coreGrad.addColorStop(0, 'white');
-            coreGrad.addColorStop(0.5, '#38bdf8'); 
-            coreGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-            ctx.fillStyle = coreGrad;
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#38bdf8';
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            ctx.beginPath();
-            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-            ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 5]); 
-            ctx.stroke();
-            ctx.setLineDash([]); 
-        } else if (currentLevel >= 4) {
-            ctx.beginPath();
-            for (let i = 0; i < 6; i++) {
-                const angle = (Math.PI / 3) * i;
-                const r = 12;
-                const hx = r * Math.cos(angle);
-                const hy = r * Math.sin(angle);
-                if (i === 0) ctx.moveTo(hx, hy);
-                else ctx.lineTo(hx, hy);
-            }
-            ctx.closePath();
-            ctx.fillStyle = '#475569'; 
-            ctx.fill();
-            ctx.strokeStyle = '#94a3b8';
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-            ctx.strokeStyle = '#475569';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-        } else {
-            ctx.beginPath();
-            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(0, 0, 8, 0, Math.PI * 2);
-            ctx.fillStyle = '#1e293b';
-            ctx.fill();
         }
     }
+
+    // --- 3. ADIM: İÇ BOŞLUK (CORE) ---
+    // Core da şekle uygun olsun
+    ctx.globalCompositeOperation = 'source-over'; // Normal moda dön (clip hala aktif olabilir)
+    ctx.beginPath();
+    
+    // İç şekil, dış şeklin küçüğü
+    drawShapePath(ctx, shapeType, innerRadius);
+    ctx.fillStyle = '#020617'; // Arkaplan rengiyle "delik" aç
+    ctx.fill();
+
+    // Core Dekorasyonu
+    if (shapeType !== 'circle') {
+        // Geometrik Core Efektleri
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#f472b6'; 
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = 3;
+        drawShapePath(ctx, shapeType, innerRadius - 5);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    } else {
+        // Klasik Daire Core Efektleri
+        if (currentLevel >= 8) {
+             const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
+             coreGrad.addColorStop(0, 'white');
+             coreGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+             ctx.fillStyle = coreGrad;
+             ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
+        ctx.strokeStyle = currentLevel >= 4 ? '#475569' : 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
     ctx.restore();
+  };
+
+  // Yardımcı: Geometrik Şekil Yolları Çizici
+  const drawShapePath = (ctx: CanvasRenderingContext2D, type: string, r: number) => {
+      if (type === 'circle') {
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+      } else if (type === 'square') {
+          ctx.rect(-r, -r, r * 2, r * 2);
+      } else if (type === 'hexagon') {
+          for (let i = 0; i < 6; i++) {
+              const angle = (Math.PI / 3) * i;
+              const x = r * Math.cos(angle);
+              const y = r * Math.sin(angle);
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+      } else if (type === 'octagon') {
+          for (let i = 0; i < 8; i++) {
+              const angle = (Math.PI / 4) * i - Math.PI / 8; // 22.5 derece offset ile düz durur
+              const x = r * 1.1 * Math.cos(angle); // Biraz scale up
+              const y = r * 1.1 * Math.sin(angle);
+              if (i === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+      } else if (type === 'star') {
+          const spikes = 4;
+          const outer = r * 1.2;
+          const inner = r * 0.5;
+          let rot = -Math.PI / 2;
+          const step = Math.PI / spikes;
+          ctx.moveTo(0, 0 - outer);
+          for (let i = 0; i < spikes; i++) {
+              let x = Math.cos(rot) * outer;
+              let y = Math.sin(rot) * outer;
+              ctx.lineTo(x, y);
+              rot += step;
+              x = Math.cos(rot) * inner;
+              y = Math.sin(rot) * inner;
+              ctx.lineTo(x, y);
+              rot += step;
+          }
+          ctx.closePath();
+      }
   };
 
   const drawBall = (ctx: CanvasRenderingContext2D, x: number, ball: Ball) => {
