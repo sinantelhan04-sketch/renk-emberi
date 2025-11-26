@@ -29,6 +29,17 @@ export interface Particle {
   shape: 'circle' | 'square' | 'line' | 'shockwave'; // Added shockwave
 }
 
+export interface FloatingText {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  alpha: number;
+  vy: number;
+  color: string;
+  size: number;
+}
+
 export interface Star {
   x: number;
   y: number;

@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ColorType, Ball, GameState, WHEEL_COLORS, Particle, Star, ShapeType } from '../types';
-import { GAME_CONFIG, SEGMENT_ORDER, PARTICLE_CONFIG } from '../constants';
+import { ColorType, Ball, GameState, WHEEL_COLORS, Particle, Star, ShapeType, FloatingText } from '../types';
+import { GAME_CONFIG, SEGMENT_ORDER, PARTICLE_CONFIG, SCORE_VALUES } from '../constants';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -16,6 +16,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   // --- OYUN NESNELERİ ---
   const ballsRef = useRef<Ball[]>([]);
   const particlesRef = useRef<Particle[]>([]); // Patlama efektleri için
+  const floatingTextsRef = useRef<FloatingText[]>([]); // Uçan puan yazıları için
   const starsRef = useRef<Star[]>([]); // Arka plan efektleri için
   
   // --- DURUM REFLERİ ---
@@ -224,14 +225,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
              else if (angle >= 225 && angle < 315) clickedQuadrant = 0; // Üst
              else clickedQuadrant = 1; // Sağ (Diğer tüm durumlar)
              
-             // Tıklanan bölgenin (clickedQuadrant) en tepeye (0) gelmesi için gereken dönüş miktarı
-             // Formül: (4 - Mevcut) % 4
-             // Örnekler:
-             // Tıklanan Sağ (1) -> (4-1)%4 = 3 tur (veya -1). Yani Sola 1 tık.
-             // Tıklanan Sol (3) -> (4-3)%4 = 1 tur. Yani Sağa 1 tık.
-             // Tıklanan Alt (2) -> (4-2)%4 = 2 tur.
+             // En Kısa Yol (Shortest Path) Hesabı:
+             // Sağdaki renge (1) tıklandıysa -> Sola dön (-1)
+             // Soldaki renge (3) tıklandıysa -> Sağa dön (+1)
+             // Alttaki renge (2) tıklandıysa -> Tam tur (2)
              
-             let rotationAmount = (4 - clickedQuadrant) % 4;
+             let rotationAmount = 0;
+             
+             if (clickedQuadrant === 1) rotationAmount = -1; // Sağ -> Sol Dönüş
+             else if (clickedQuadrant === 3) rotationAmount = 1; // Sol -> Sağ Dönüş
+             else if (clickedQuadrant === 2) rotationAmount = 2; // Alt -> Tam Dönüş
+             // clickedQuadrant 0 ise (Üst) hareket yok
 
              if (rotationAmount !== 0) {
                  rotateWheel(rotationAmount);
@@ -260,6 +264,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     if (isRestart || isStart) {
       ballsRef.current = [];
       particlesRef.current = [];
+      floatingTextsRef.current = [];
       wheelRotationIndexRef.current = 0;
       visualRotationRef.current = 0;
       targetRotationRef.current = 0;
@@ -302,6 +307,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         shape: particleShape
       });
     }
+  };
+
+  // Yardımcı: Uçan Yazı Efekti
+  const createFloatingText = (x: number, y: number, text: string, color: string, fontSize: number = 24) => {
+    floatingTextsRef.current.push({
+      id: Math.random(),
+      x,
+      y,
+      text,
+      alpha: 1,
+      vy: -2, // Yukarı süzülme
+      color,
+      size: fontSize
+    });
   };
 
   // Yardımcı: Çember Patlaması
@@ -435,10 +454,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
             createExplosion(centerX, hitY + GAME_CONFIG.BALL_RADIUS, ball.color);
             playSound('score'); 
             
+            const points = SCORE_VALUES[ball.shape];
+            createFloatingText(centerX, hitY, `+${points}`, ball.color, points > 2 ? 32 : 24);
+
             ballsRef.current.splice(i, 1);
             
             setGameState(prev => {
-              const newScore = prev.score + 1;
+              const newScore = prev.score + points;
               const newLevel = Math.floor(newScore / 10) + 1;
               return { ...prev, score: newScore, level: newLevel };
             });
@@ -458,6 +480,30 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         } else {
           drawBall(ctx, centerX, ball);
         }
+      }
+
+      // Render Floating Texts
+      for (let i = floatingTextsRef.current.length - 1; i >= 0; i--) {
+          const ft = floatingTextsRef.current[i];
+          ft.y += ft.vy;
+          ft.alpha -= 0.02;
+
+          if (ft.alpha <= 0) {
+              floatingTextsRef.current.splice(i, 1);
+          } else {
+              ctx.save();
+              ctx.globalAlpha = ft.alpha;
+              ctx.font = `900 ${ft.size}px 'Inter', sans-serif`;
+              ctx.fillStyle = ft.color;
+              ctx.shadowColor = 'black';
+              ctx.shadowBlur = 4;
+              ctx.textAlign = 'center';
+              ctx.fillText(ft.text, ft.x, ft.y);
+              ctx.strokeStyle = 'white';
+              ctx.lineWidth = 1;
+              ctx.strokeText(ft.text, ft.x, ft.y);
+              ctx.restore();
+          }
       }
 
       for (let i = particlesRef.current.length - 1; i >= 0; i--) {
@@ -521,7 +567,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         drawTargetIndicator(ctx, centerX, centerY - GAME_CONFIG.WHEEL_RADIUS - 15);
       }
 
-      if ((gameState.isPlaying) || particlesRef.current.length > 0) {
+      if ((gameState.isPlaying) || particlesRef.current.length > 0 || floatingTextsRef.current.length > 0) {
         animationFrameRef.current = requestAnimationFrame(render);
       }
     };

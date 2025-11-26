@@ -1,4 +1,4 @@
-import { ColorType } from './types';
+import { ColorType, ShapeType } from './types';
 
 export const GAME_CONFIG = {
   WHEEL_RADIUS: 115,
@@ -27,3 +27,12 @@ export const SEGMENT_ORDER = [
   ColorType.GREEN,  // 2: Alt
   ColorType.YELLOW  // 3: Sol
 ];
+
+// Şekillere göre puan değerleri
+export const SCORE_VALUES: Record<ShapeType, number> = {
+  circle: 1,
+  square: 2,
+  hexagon: 3,
+  diamond: 5,
+  star: 10
+};
