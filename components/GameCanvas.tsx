@@ -648,6 +648,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
   const drawWheel = (ctx: CanvasRenderingContext2D, x: number, y: number, rotationRad: number, scale: number) => {
     const currentLevel = Math.floor(scoreRef.current / 10) + 1;
+    const isSquareShape = currentLevel > 10;
 
     ctx.save();
     ctx.translate(x, y);
@@ -659,118 +660,179 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const gap = 0.08; 
 
     SEGMENT_ORDER.forEach((color, index) => {
-      const startAngle = ((index * 90) - 135) * (Math.PI / 180) + gap;
-      const endAngle = ((index * 90) - 45) * (Math.PI / 180) - gap;
+      
+      if (isSquareShape) {
+        // --- KARE (LEVEL 11+) ---
+        // 4 Parçayı Trapezoid olarak çiz
+        const R = outerRadius;
+        const r = innerRadius;
+        
+        ctx.beginPath();
+        if (index === 0) { // Top (Red)
+          ctx.moveTo(-R, -R); ctx.lineTo(R, -R);
+          ctx.lineTo(r, -r); ctx.lineTo(-r, -r);
+        } else if (index === 1) { // Right (Blue)
+          ctx.moveTo(R, -R); ctx.lineTo(R, R);
+          ctx.lineTo(r, r); ctx.lineTo(r, -r);
+        } else if (index === 2) { // Bottom (Green)
+          ctx.moveTo(R, R); ctx.lineTo(-R, R);
+          ctx.lineTo(-r, r); ctx.lineTo(r, r);
+        } else { // Left (Yellow)
+          ctx.moveTo(-R, R); ctx.lineTo(-R, -R);
+          ctx.lineTo(-r, -r); ctx.lineTo(-r, r);
+        }
+        ctx.closePath();
+        
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-      ctx.beginPath();
-      ctx.arc(0, 0, outerRadius, startAngle, endAngle, false);
-      ctx.arc(0, 0, innerRadius, endAngle, startAngle, true);
-      ctx.closePath();
+        // Kare Kenar Detayları
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-      ctx.fillStyle = color;
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = color;
-      ctx.fill();
-      ctx.shadowBlur = 0; 
+      } else {
+        // --- DAİRE (LEVEL 1-10) ---
+        const startAngle = ((index * 90) - 135) * (Math.PI / 180) + gap;
+        const endAngle = ((index * 90) - 45) * (Math.PI / 180) - gap;
 
-      if (currentLevel >= 4 && currentLevel < 8) {
-          ctx.save();
-          ctx.clip(); 
-          const midRadius = (outerRadius + innerRadius) / 2;
-          ctx.beginPath();
-          ctx.arc(0, 0, midRadius, startAngle, endAngle);
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-          ctx.lineWidth = 4;
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(0, 0, outerRadius - 2, startAngle, endAngle);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.restore();
-      }
-      else if (currentLevel >= 8) {
-          ctx.save();
-          ctx.clip();
-          const midAngle = (startAngle + endAngle) / 2;
-          const polyX = Math.cos(midAngle) * ((outerRadius + innerRadius) / 2);
-          const polyY = Math.sin(midAngle) * ((outerRadius + innerRadius) / 2);
-          ctx.beginPath();
-          ctx.arc(0, 0, outerRadius, startAngle, endAngle);
-          ctx.lineTo(0, 0); 
-          const grad = ctx.createRadialGradient(polyX, polyY, 5, polyX, polyY, 40);
-          grad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.fillStyle = grad;
-          ctx.fill();
-          ctx.restore();
-      }
-      else {
-          const midAngle = (startAngle + endAngle) / 2;
-          const glossX = Math.cos(midAngle) * (outerRadius * 0.8);
-          const glossY = Math.sin(midAngle) * (outerRadius * 0.8);
-          const grad = ctx.createRadialGradient(glossX, glossY, 5, glossX, glossY, 40);
-          grad.addColorStop(0, 'rgba(255,255,255,0.3)');
-          grad.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = grad;
-          ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, outerRadius, startAngle, endAngle, false);
+        ctx.arc(0, 0, innerRadius, endAngle, startAngle, true);
+        ctx.closePath();
+
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = color;
+        ctx.fill();
+        ctx.shadowBlur = 0; 
+        
+        // Daire için detaylar (Mevcut kod)
+        if (currentLevel >= 4 && currentLevel < 8) {
+             // ... existing level 4-8 details ...
+             ctx.save();
+             ctx.clip(); 
+             const midRadius = (outerRadius + innerRadius) / 2;
+             ctx.beginPath();
+             ctx.arc(0, 0, midRadius, startAngle, endAngle);
+             ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+             ctx.lineWidth = 4;
+             ctx.stroke();
+             ctx.beginPath();
+             ctx.arc(0, 0, outerRadius - 2, startAngle, endAngle);
+             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+             ctx.lineWidth = 2;
+             ctx.stroke();
+             ctx.restore();
+        } else if (currentLevel >= 8) {
+             // ... existing level 8+ details ...
+             ctx.save();
+             ctx.clip();
+             const midAngle = (startAngle + endAngle) / 2;
+             const polyX = Math.cos(midAngle) * ((outerRadius + innerRadius) / 2);
+             const polyY = Math.sin(midAngle) * ((outerRadius + innerRadius) / 2);
+             ctx.beginPath();
+             ctx.arc(0, 0, outerRadius, startAngle, endAngle);
+             ctx.lineTo(0, 0); 
+             const grad = ctx.createRadialGradient(polyX, polyY, 5, polyX, polyY, 40);
+             grad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+             grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+             ctx.fillStyle = grad;
+             ctx.fill();
+             ctx.restore();
+        } else {
+             const midAngle = (startAngle + endAngle) / 2;
+             const glossX = Math.cos(midAngle) * (outerRadius * 0.8);
+             const glossY = Math.sin(midAngle) * (outerRadius * 0.8);
+             const grad = ctx.createRadialGradient(glossX, glossY, 5, glossX, glossY, 40);
+             grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+             grad.addColorStop(1, 'rgba(255,255,255,0)');
+             ctx.fillStyle = grad;
+             ctx.fill();
+        }
       }
     });
 
-    ctx.beginPath();
-    ctx.arc(0, 0, innerRadius - 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#020617'; 
-    ctx.fill();
+    // --- İÇ BOŞLUK (CORE) ---
+    if (isSquareShape) {
+        // Kare İç Boşluk
+        const r = innerRadius;
+        ctx.beginPath();
+        ctx.rect(-r + 5, -r + 5, (r * 2) - 10, (r * 2) - 10);
+        ctx.fillStyle = '#020617';
+        ctx.fill();
 
-    if (currentLevel >= 8) {
-        ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, Math.PI * 2);
-        const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
-        coreGrad.addColorStop(0, 'white');
-        coreGrad.addColorStop(0.5, '#38bdf8'); 
-        coreGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-        ctx.fillStyle = coreGrad;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#38bdf8';
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]); 
-        ctx.stroke();
-        ctx.setLineDash([]); 
-    } else if (currentLevel >= 4) {
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-            const angle = (Math.PI / 3) * i;
-            const r = 12;
-            const hx = r * Math.cos(angle);
-            const hy = r * Math.sin(angle);
-            if (i === 0) ctx.moveTo(hx, hy);
-            else ctx.lineTo(hx, hy);
-        }
-        ctx.closePath();
-        ctx.fillStyle = '#475569'; 
-        ctx.fill();
-        ctx.strokeStyle = '#94a3b8';
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-        ctx.strokeStyle = '#475569';
+        // Kare Core Glow
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = '#f472b6'; // Pembe glow
+        ctx.strokeStyle = '#f472b6';
         ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.strokeRect(-r + 10, -r + 10, (r * 2) - 20, (r * 2) - 20);
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = 'white';
+        ctx.fillRect(-5, -5, 10, 10);
+
     } else {
+        // Daire İç Boşluk (Mevcut kod)
         ctx.beginPath();
-        ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.fillStyle = '#1e293b';
+        ctx.arc(0, 0, innerRadius - 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#020617'; 
         ctx.fill();
+
+        if (currentLevel >= 8) {
+            ctx.beginPath();
+            ctx.arc(0, 0, 15, 0, Math.PI * 2);
+            const coreGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
+            coreGrad.addColorStop(0, 'white');
+            coreGrad.addColorStop(0.5, '#38bdf8'); 
+            coreGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            ctx.fillStyle = coreGrad;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#38bdf8';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]); 
+            ctx.stroke();
+            ctx.setLineDash([]); 
+        } else if (currentLevel >= 4) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i;
+                const r = 12;
+                const hx = r * Math.cos(angle);
+                const hy = r * Math.sin(angle);
+                if (i === 0) ctx.moveTo(hx, hy);
+                else ctx.lineTo(hx, hy);
+            }
+            ctx.closePath();
+            ctx.fillStyle = '#475569'; 
+            ctx.fill();
+            ctx.strokeStyle = '#94a3b8';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, innerRadius - 8, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+        }
     }
     ctx.restore();
   };
