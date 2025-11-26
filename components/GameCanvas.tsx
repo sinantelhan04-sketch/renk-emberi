@@ -259,9 +259,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       ballsRef.current = [];
       particlesRef.current = [];
       floatingTextsRef.current = [];
-      wheelRotationIndexRef.current = 0;
-      visualRotationRef.current = 0;
-      targetRotationRef.current = 0;
+      
+      // SADECE level 1'den başlanıyorsa (Tam Reset) çarkı sıfırla.
+      // Kaldığı yerden devam ediyorsa (Continue) çarkın yönü korunsun.
+      if (gameState.level === 1) {
+          wheelRotationIndexRef.current = 0;
+          visualRotationRef.current = 0;
+          targetRotationRef.current = 0;
+      } else {
+          // Continue durumunda hedef açıyı görsel açıya eşitle ki 
+          // gereksiz dönme animasyonu olmasın (spin durur)
+          targetRotationRef.current = visualRotationRef.current;
+      }
+
       lastSpawnTimeRef.current = performance.now();
       rotationVelocityRef.current = 0;
       speedMultiplierRef.current = 1.0;
@@ -280,7 +290,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
     prevIsGameOver.current = gameState.isGameOver;
     prevIsPlaying.current = gameState.isPlaying;
-  }, [gameState.isPlaying, gameState.isGameOver, gameState.score]);
+  }, [gameState.isPlaying, gameState.isGameOver, gameState.score, gameState.level]);
 
   // Yardımcı: Parçacık Patlaması
   const createExplosion = (x: number, y: number, color: string) => {
@@ -437,13 +447,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         const speedIncrease = (totalTimePlayedRef.current / 1000) * 0.05;
         currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + speedIncrease;
 
-        const currentScore = scoreRef.current;
-        const spawnRate = Math.max(
-            GAME_CONFIG.MIN_SPAWN_RATE_MS, 
-            GAME_CONFIG.SPAWN_RATE_MS - (currentScore * 25)
-        );
-        
-        if (time - lastSpawnTimeRef.current > spawnRate) {
+        // --- SPAWN LOGIC: TOP BİTİNCE YENİSİ GELSİN (Sequential) ---
+        // Sadece ekranda top yoksa yenisini oluştur.
+        if (ballsRef.current.length === 0) {
             const randomColor = WHEEL_COLORS[Math.floor(Math.random() * WHEEL_COLORS.length)];
             const shapes: ShapeType[] = ['circle', 'square', 'hexagon', 'diamond', 'star'];
             
