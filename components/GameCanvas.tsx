@@ -31,6 +31,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   const lastSpawnTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
   const currentSpeedRef = useRef<number>(GAME_CONFIG.INITIAL_SPEED);
+  const totalTimePlayedRef = useRef<number>(0); // Tracks time played in current session for speed ramp
   
   // Slow Motion State
   const speedMultiplierRef = useRef<number>(1.0);
@@ -266,7 +267,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       speedMultiplierRef.current = 1.0;
       if (slowMotionTimeoutRef.current) clearTimeout(slowMotionTimeoutRef.current);
       
-      currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + (gameState.score * GAME_CONFIG.SPEED_INCREMENT);
+      // Hız sıfırlama: Levelden bağımsız olarak başlangıç hızına dön
+      // Böylece yüksek levelda devam eden oyuncu "imkansız" bir hızla karşılaşmaz.
+      // Hız zamanla artacak (render loop içinde).
+      currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED;
+      totalTimePlayedRef.current = 0;
       
       if (audioCtxRef.current?.state === 'suspended') {
         audioCtxRef.current.resume().catch(() => {});
@@ -388,7 +393,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const TENSION = 0.15; 
     const FRICTION = 0.65; 
 
+    // Render loop için son zamanı tut
+    let lastTime = performance.now();
+
     const render = (time: number) => {
+      const deltaTime = time - lastTime;
+      lastTime = time;
+
       ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
       starsRef.current.forEach(star => {
@@ -420,6 +431,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       scaleRef.current += (1 - scaleRef.current) * 0.15;
 
       if (gameState.isPlaying && !gameState.isGameOver) {
+        // --- ZAMAN BAZLI HIZ ARTIŞI ---
+        totalTimePlayedRef.current += deltaTime;
+        // Her saniye hız 0.05 artar (Daha dengeli artış)
+        const speedIncrease = (totalTimePlayedRef.current / 1000) * 0.05;
+        currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + speedIncrease;
+
         const currentScore = scoreRef.current;
         const spawnRate = Math.max(
             GAME_CONFIG.MIN_SPAWN_RATE_MS, 
@@ -462,25 +479,28 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
           const topColorIndex = (0 - wheelRotationIndexRef.current + 4) % 4;
           const activeColor = SEGMENT_ORDER[topColorIndex];
 
-          if (ball.color === activeColor) {
-            createExplosion(centerX, hitY + GAME_CONFIG.BALL_RADIUS, ball.color);
+          // Snowflake herhangi bir renkle eşleşir (Wildcard)
+          const isMatch = ball.color === activeColor || ball.shape === 'snowflake';
+
+          if (isMatch) {
+            createExplosion(centerX, hitY + GAME_CONFIG.BALL_RADIUS, ball.shape === 'snowflake' ? '#22d3ee' : ball.color);
             playSound('score'); 
             
+            const points = SCORE_VALUES[ball.shape];
+
             if (ball.shape === 'snowflake') {
                 triggerSlowMotion();
                 createFloatingText(centerX, hitY, "FREEZE!", '#22d3ee', 36); // Cyan-400
             } else {
-                const points = SCORE_VALUES[ball.shape];
                 createFloatingText(centerX, hitY, `+${points}`, ball.color, points > 2 ? 32 : 24);
-                
-                // Slow motion sırasında puan artışı ama hız artışı normal
-                setGameState(prev => {
-                  const newScore = prev.score + points;
-                  const newLevel = Math.floor(newScore / 10) + 1;
-                  return { ...prev, score: newScore, level: newLevel };
-                });
-                currentSpeedRef.current += GAME_CONFIG.SPEED_INCREMENT;
             }
+            
+            // Puanı güncelle
+            setGameState(prev => {
+              const newScore = prev.score + points;
+              const newLevel = Math.floor(newScore / 10) + 1;
+              return { ...prev, score: newScore, level: newLevel };
+            });
 
             ballsRef.current.splice(i, 1);
             scaleRef.current = 1.2; 
