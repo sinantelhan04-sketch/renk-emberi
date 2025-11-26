@@ -6,7 +6,7 @@ export enum ColorType {
   YELLOW = '#EAB308'  // Tailwind yellow-500
 }
 
-export type ShapeType = 'circle' | 'square' | 'hexagon' | 'diamond' | 'star';
+export type ShapeType = 'circle' | 'square' | 'hexagon' | 'diamond' | 'star' | 'snowflake';
 
 export interface Ball {
   id: number;

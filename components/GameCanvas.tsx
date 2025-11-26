@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ColorType, Ball, GameState, WHEEL_COLORS, Particle, Star, ShapeType, FloatingText } from '../types';
 import { GAME_CONFIG, SEGMENT_ORDER, PARTICLE_CONFIG, SCORE_VALUES } from '../constants';
@@ -32,6 +31,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
   const lastSpawnTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number>(0);
   const currentSpeedRef = useRef<number>(GAME_CONFIG.INITIAL_SPEED);
+  
+  // Slow Motion State
+  const speedMultiplierRef = useRef<number>(1.0);
+  const slowMotionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track previous states for reset detection
   const prevIsGameOver = useRef(gameState.isGameOver);
@@ -61,7 +64,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     };
   }, []);
 
-  const playSound = useCallback((type: 'score' | 'gameover') => {
+  const playSound = useCallback((type: 'score' | 'gameover' | 'freeze') => {
     if (isMuted || !audioCtxRef.current) return;
 
     const ctx = audioCtxRef.current;
@@ -81,7 +84,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const currentScore = scoreRef.current;
     const currentLevel = Math.floor(currentScore / 10) + 1;
 
-    if (type === 'score') {
+    if (type === 'freeze') {
+        // Buz Efekti Sesi (Kristal çınlama)
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.linearRampToValueAtTime(800, now + 0.5);
+        gainNode.gain.setValueAtTime(0.5, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+    } else if (type === 'score') {
       // --- EVRİMLEŞEN SES EFEKTLERİ ---
       
       if (currentLevel < 4) {
@@ -91,7 +103,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.1);
         
-        // Volume increased from 0.3 to 0.8
         gainNode.gain.setValueAtTime(0.8, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         
@@ -105,7 +116,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
         
-        // Volume increased from 0.2 to 0.5 (Sawtooth is naturally louder)
         gainNode.gain.setValueAtTime(0.5, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
         
@@ -119,7 +129,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         osc.frequency.setValueAtTime(freq, now);
         osc.frequency.linearRampToValueAtTime(freq * 2, now + 0.05); 
         
-        // Volume increased from 0.15 to 0.4
         gainNode.gain.setValueAtTime(0.4, now);
         gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
         
@@ -133,7 +142,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       osc.frequency.setValueAtTime(150, now);
       osc.frequency.exponentialRampToValueAtTime(10, now + 1.0);
 
-      // Volume increased from 0.3 to 0.7
       gainNode.gain.setValueAtTime(0.7, now);
       gainNode.gain.linearRampToValueAtTime(0.001, now + 1.0);
 
@@ -191,7 +199,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
     const handlePointerDown = (e: PointerEvent) => {
         const target = e.target as HTMLElement;
-        // Butonlara basıldığında oyun etkileşimini engelle
         if (target.tagName === 'BUTTON' || target.closest('button')) return;
 
         if (!gameState.isPlaying || gameState.isGameOver) return;
@@ -208,46 +215,32 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         const dy = y - centerY;
         const dist = Math.sqrt(dx*dx + dy*dy);
 
-        // Çarkın üzerine tıklandıysa akıllı döndürme yap
         if (dist < GAME_CONFIG.WHEEL_RADIUS * 1.6) {
              let angle = Math.atan2(dy, dx) * (180 / Math.PI);
              if (angle < 0) angle += 360;
              
              let clickedQuadrant = 0; 
-             // Visual Quadrant Mapping (Görsel Bölge Eşleşmesi)
-             // 0: Üst (225° - 315°)
-             // 1: Sağ (315° - 360° & 0° - 45°)
-             // 2: Alt (45° - 135°)
-             // 3: Sol (135° - 225°)
              
              if (angle >= 45 && angle < 135) clickedQuadrant = 2; // Alt
              else if (angle >= 135 && angle < 225) clickedQuadrant = 3; // Sol
              else if (angle >= 225 && angle < 315) clickedQuadrant = 0; // Üst
              else clickedQuadrant = 1; // Sağ (Diğer tüm durumlar)
              
-             // En Kısa Yol (Shortest Path) Hesabı:
-             // Sağdaki renge (1) tıklandıysa -> Sola dön (-1)
-             // Soldaki renge (3) tıklandıysa -> Sağa dön (+1)
-             // Alttaki renge (2) tıklandıysa -> Tam tur (2)
-             
              let rotationAmount = 0;
              
              if (clickedQuadrant === 1) rotationAmount = -1; // Sağ -> Sol Dönüş
              else if (clickedQuadrant === 3) rotationAmount = 1; // Sol -> Sağ Dönüş
              else if (clickedQuadrant === 2) rotationAmount = 2; // Alt -> Tam Dönüş
-             // clickedQuadrant 0 ise (Üst) hareket yok
 
              if (rotationAmount !== 0) {
                  rotateWheel(rotationAmount);
              }
         } else {
-            // Çark dışına tıklandıysa standart dönüş
             rotateWheel(1);
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    // Mouse ve Touch eventlerini pointerdown ile birleştiriyoruz (Ghost click engellemek için)
     window.addEventListener('pointerdown', handlePointerDown);
 
     return () => {
@@ -270,8 +263,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       targetRotationRef.current = 0;
       lastSpawnTimeRef.current = performance.now();
       rotationVelocityRef.current = 0;
+      speedMultiplierRef.current = 1.0;
+      if (slowMotionTimeoutRef.current) clearTimeout(slowMotionTimeoutRef.current);
       
-      // Hızı mevcut skora göre ayarla (Kaldığın yerden devam özelliği için)
       currentSpeedRef.current = GAME_CONFIG.INITIAL_SPEED + (gameState.score * GAME_CONFIG.SPEED_INCREMENT);
       
       if (audioCtxRef.current?.state === 'suspended') {
@@ -362,6 +356,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       });
   };
 
+  // Slow Motion Helper
+  const triggerSlowMotion = () => {
+      speedMultiplierRef.current = GAME_CONFIG.SLOW_MOTION_FACTOR;
+      playSound('freeze');
+      
+      if (slowMotionTimeoutRef.current) clearTimeout(slowMotionTimeoutRef.current);
+      
+      slowMotionTimeoutRef.current = setTimeout(() => {
+          speedMultiplierRef.current = 1.0;
+      }, GAME_CONFIG.SLOW_MOTION_DURATION);
+  };
+
   // --- ANA OYUN DÖNGÜSÜ ---
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -379,9 +385,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2 + 80;
 
-    // Yay fiziği sabitleri (Daha tok ve net bir hissiyat için güncellendi)
-    const TENSION = 0.15; // Increased snap (was 0.08)
-    const FRICTION = 0.65; // High damping to stop quickly (was 0.85)
+    const TENSION = 0.15; 
+    const FRICTION = 0.65; 
 
     const render = (time: number) => {
       ctx.clearRect(0, 0, dimensions.width, dimensions.height);
@@ -404,13 +409,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
              return; 
       }
 
-      // --- SPRING PHYSICS FOR ROTATION ---
       const diff = targetRotationRef.current - visualRotationRef.current;
       rotationVelocityRef.current += diff * TENSION;
       rotationVelocityRef.current *= FRICTION;
       visualRotationRef.current += rotationVelocityRef.current;
       
-      // Squash & Stretch effect based on velocity (Significantly reduced for less wobble)
       const velocityStretch = Math.min(Math.abs(rotationVelocityRef.current) * 0.1, 0.05);
       const dynamicScale = scaleRef.current - velocityStretch;
 
@@ -426,7 +429,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         if (time - lastSpawnTimeRef.current > spawnRate) {
             const randomColor = WHEEL_COLORS[Math.floor(Math.random() * WHEEL_COLORS.length)];
             const shapes: ShapeType[] = ['circle', 'square', 'hexagon', 'diamond', 'star'];
-            const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+            
+            // %8 şansla Kar Tanesi (Yavaşlatıcı) topu gelsin
+            let randomShape: ShapeType;
+            if (Math.random() < 0.08) {
+                randomShape = 'snowflake';
+            } else {
+                randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+            }
 
             ballsRef.current.push({
               id: time,
@@ -444,7 +454,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
       for (let i = ballsRef.current.length - 1; i >= 0; i--) {
         const ball = ballsRef.current[i];
-        ball.y += ball.speed;
+        
+        // Hız çarpanını uygula (Slow Motion için)
+        ball.y += ball.speed * speedMultiplierRef.current;
 
         if (ball.y >= hitY) {
           const topColorIndex = (0 - wheelRotationIndexRef.current + 4) % 4;
@@ -454,18 +466,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
             createExplosion(centerX, hitY + GAME_CONFIG.BALL_RADIUS, ball.color);
             playSound('score'); 
             
-            const points = SCORE_VALUES[ball.shape];
-            createFloatingText(centerX, hitY, `+${points}`, ball.color, points > 2 ? 32 : 24);
+            if (ball.shape === 'snowflake') {
+                triggerSlowMotion();
+                createFloatingText(centerX, hitY, "FREEZE!", '#22d3ee', 36); // Cyan-400
+            } else {
+                const points = SCORE_VALUES[ball.shape];
+                createFloatingText(centerX, hitY, `+${points}`, ball.color, points > 2 ? 32 : 24);
+                
+                // Slow motion sırasında puan artışı ama hız artışı normal
+                setGameState(prev => {
+                  const newScore = prev.score + points;
+                  const newLevel = Math.floor(newScore / 10) + 1;
+                  return { ...prev, score: newScore, level: newLevel };
+                });
+                currentSpeedRef.current += GAME_CONFIG.SPEED_INCREMENT;
+            }
 
             ballsRef.current.splice(i, 1);
-            
-            setGameState(prev => {
-              const newScore = prev.score + points;
-              const newLevel = Math.floor(newScore / 10) + 1;
-              return { ...prev, score: newScore, level: newLevel };
-            });
-
-            currentSpeedRef.current += GAME_CONFIG.SPEED_INCREMENT;
             scaleRef.current = 1.2; 
 
           } else {
@@ -473,6 +490,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
                 playSound('gameover'); 
                 createWheelExplosion(centerX, centerY); 
                 onGameOver();
+                if (slowMotionTimeoutRef.current) clearTimeout(slowMotionTimeoutRef.current);
             }
              ballsRef.current.splice(i, 1); 
             return; 
@@ -513,6 +531,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
              p.size += 15; 
              p.alpha -= 0.03;
         } else {
+             // Slow motion parçacıkları da etkiler (isteğe bağlı, şimdilik etkilemesin)
              p.x += p.vx;
              p.y += p.vy;
              p.vy += PARTICLE_CONFIG.GRAVITY; 
@@ -562,7 +581,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
       }
 
       if (!gameState.isGameOver) {
-        // Use dynamicScale calculated from spring physics velocity
         drawWheel(ctx, centerX, centerY, visualRotationRef.current, dynamicScale);
         drawTargetIndicator(ctx, centerX, centerY - GAME_CONFIG.WHEEL_RADIUS - 15);
       }
@@ -733,10 +751,22 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
 
   const drawBall = (ctx: CanvasRenderingContext2D, x: number, ball: Ball) => {
     ctx.save();
+    
+    // Draw ball trail or body
+    if (ball.shape === 'snowflake') {
+         // Özel Snowflake Glow
+         ctx.shadowBlur = 20;
+         ctx.shadowColor = '#22d3ee'; // Cyan glow
+    } else {
+         ctx.shadowBlur = 10;
+         ctx.shadowColor = ball.color;
+    }
+
+    // Gradient Trail
     const tailLength = ball.speed * 2;
     const gradient = ctx.createLinearGradient(x, ball.y - tailLength, x, ball.y);
     gradient.addColorStop(0, 'rgba(255,255,255,0)');
-    gradient.addColorStop(1, ball.color);
+    gradient.addColorStop(1, ball.shape === 'snowflake' ? '#22d3ee' : ball.color);
     ctx.beginPath();
     ctx.moveTo(x - ball.radius * 0.6, ball.y);
     ctx.lineTo(x, ball.y - tailLength);
@@ -747,9 +777,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
     ctx.globalAlpha = 1.0;
 
     ctx.beginPath();
-    ctx.fillStyle = ball.color;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = ball.color;
+    ctx.fillStyle = ball.shape === 'snowflake' ? '#ecfeff' : ball.color;
 
     if (ball.shape === 'square') {
         const size = ball.radius * 2;
@@ -803,18 +831,51 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ gameState, setGameState, onGame
         }
         ctx.lineTo(x, ball.y - outerRadius);
         ctx.closePath();
+    } else if (ball.shape === 'snowflake') {
+        // Kar Tanesi Çizimi
+        const spikes = 8;
+        const outerRadius = ball.radius * 1.2;
+        const innerRadius = ball.radius * 0.3;
+        
+        // Çarpı Kolları
+        for (let i = 0; i < 4; i++) {
+             ctx.save();
+             ctx.translate(x, ball.y);
+             ctx.rotate((Math.PI / 4) * i);
+             ctx.fillStyle = '#22d3ee';
+             ctx.fillRect(-2, -outerRadius, 4, outerRadius * 2);
+             
+             // Uçlara toplar
+             ctx.beginPath();
+             ctx.arc(0, -outerRadius, 3, 0, Math.PI*2);
+             ctx.arc(0, outerRadius, 3, 0, Math.PI*2);
+             ctx.fillStyle = 'white';
+             ctx.fill();
+             ctx.restore();
+        }
+        // Merkez
+        ctx.beginPath();
+        ctx.arc(x, ball.y, innerRadius, 0, Math.PI*2);
+        ctx.fillStyle = 'white';
     } else {
         ctx.arc(x, ball.y, ball.radius, 0, Math.PI * 2);
     }
-    ctx.fill();
+    
+    // Snowflake zaten dolduruldu, diğerleri için fill
+    if (ball.shape !== 'snowflake') {
+        ctx.fill();
+    }
+    
     ctx.shadowBlur = 0;
+    
+    // Shine / Highlight
     ctx.beginPath();
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     if (ball.shape === 'square') {
          ctx.arc(x - ball.radius * 0.4, ball.y - ball.radius * 0.4, 3, 0, Math.PI * 2);
     } else if (ball.shape === 'star') {
          ctx.arc(x - 2, ball.y - 4, 2, 0, Math.PI * 2);
-    } else {
+    } else if (ball.shape !== 'snowflake') {
          ctx.arc(x - 3, ball.y - 3, 3, 0, Math.PI * 2);
     }
     ctx.fill();

@@ -1,3 +1,4 @@
+
 import { ColorType, ShapeType } from './types';
 
 export const GAME_CONFIG = {
@@ -8,6 +9,8 @@ export const GAME_CONFIG = {
   SPAWN_RATE_MS: 1800, 
   MIN_SPAWN_RATE_MS: 500, 
   ROTATION_SPEED: 0.2, // Lerp katsayısı (Daha düşük = daha yavaş, daha yumuşak)
+  SLOW_MOTION_DURATION: 5000, // 5 Saniye
+  SLOW_MOTION_FACTOR: 0.5, // Hızın yarısına düşmesi
 };
 
 export const PARTICLE_CONFIG = {
@@ -34,5 +37,6 @@ export const SCORE_VALUES: Record<ShapeType, number> = {
   square: 2,
   hexagon: 3,
   diamond: 5,
-  star: 10
+  star: 10,
+  snowflake: 5
 };
